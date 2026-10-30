@@ -2,7 +2,12 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 
-// GET all feedback
+const {
+  authenticateToken,
+  authorizeRole,
+} = require("../middleware/authMiddleware");
+
+// GET all feedback - public access
 router.get("/", async (req, res) => {
   try {
     const [feedback] = await db.query(`
@@ -16,10 +21,8 @@ router.get("/", async (req, res) => {
         f.comments,
         f.feedback_date
       FROM FEEDBACK f
-      JOIN STUDENT s
-        ON f.student_id = s.student_id
-      JOIN EVENT e
-        ON f.event_id = e.event_id
+      JOIN STUDENT s ON f.student_id = s.student_id
+      JOIN EVENT e ON f.event_id = e.event_id
       ORDER BY f.feedback_date DESC
     `);
 
@@ -30,7 +33,6 @@ router.get("/", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching feedback:", error.message);
-
     res.status(500).json({
       success: false,
       message: "Failed to retrieve feedback",
@@ -38,19 +40,15 @@ router.get("/", async (req, res) => {
   }
 });
 
-// POST new feedback
-router.post("/", async (req, res) => {
-  const { student_id, event_id, rating, comments } = req.body;
+// POST feedback - authenticated students only
+router.post("/", authenticateToken, authorizeRole("student"), async (req, res) => {
+  const student_id = req.user.userId;
+  const { event_id, rating, comments } = req.body;
 
-  if (
-    !Number.isInteger(student_id) ||
-    !Number.isInteger(event_id) ||
-    student_id <= 0 ||
-    event_id <= 0
-  ) {
+  if (!Number.isInteger(event_id) || event_id <= 0) {
     return res.status(400).json({
       success: false,
-      message: "Valid student_id and event_id are required",
+      message: "A valid event_id is required",
     });
   }
 
@@ -61,11 +59,7 @@ router.post("/", async (req, res) => {
     });
   }
 
-  if (
-    comments !== undefined &&
-    comments !== null &&
-    typeof comments !== "string"
-  ) {
+  if (comments !== undefined && comments !== null && typeof comments !== "string") {
     return res.status(400).json({
       success: false,
       message: "Comments must be text",
@@ -73,20 +67,6 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // Confirm the student exists.
-    const [students] = await db.query(
-      "SELECT student_id FROM STUDENT WHERE student_id = ?",
-      [student_id]
-    );
-
-    if (students.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-      });
-    }
-
-    // Confirm the event exists.
     const [events] = await db.query(
       "SELECT event_id FROM EVENT WHERE event_id = ?",
       [event_id]
@@ -120,7 +100,6 @@ router.post("/", async (req, res) => {
     }
 
     console.error("Feedback submission error:", error.message);
-
     return res.status(500).json({
       success: false,
       message: "Failed to submit feedback",
