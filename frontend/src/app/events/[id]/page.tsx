@@ -1,69 +1,105 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-const events = [
-  {
-    id: "1",
-    title: "Tech Talk: Future of AI",
-    date: "October 10, 2026",
-    time: "10:00 AM - 12:00 PM",
-    venue: "Main Auditorium",
-    organizer: "Computer Science Department",
-    category: "Technology",
-    seats: 120,
-    available: 45,
-    description:
-      "Join us for an exciting discussion about the future of Artificial Intelligence, emerging technologies, and how AI is transforming different industries.",
-  },
-  {
-    id: "2",
-    title: "Campus Hackathon 2026",
-    date: "October 15, 2026",
-    time: "9:00 AM - 6:00 PM",
-    venue: "Innovation Lab",
-    organizer: "Coding Club",
-    category: "Competition",
-    seats: 100,
-    available: 32,
-    description:
-      "Put your coding and problem-solving skills to the test. Build innovative solutions, work with your team, and compete with students across campus.",
-  },
-  {
-    id: "3",
-    title: "Photography Workshop",
-    date: "October 18, 2026",
-    time: "2:00 PM - 4:00 PM",
-    venue: "Seminar Hall 2",
-    organizer: "Creative Arts Club",
-    category: "Workshop",
-    seats: 50,
-    available: 18,
-    description:
-      "Learn the fundamentals of photography, composition, lighting, and creative techniques from experienced photographers.",
-  },
-  {
-    id: "4",
-    title: "Inter-College Basketball Tournament",
-    date: "October 22, 2026",
-    time: "9:00 AM - 5:00 PM",
-    venue: "University Sports Ground",
-    organizer: "Sports Department",
-    category: "Sports",
-    seats: 200,
-    available: 75,
-    description:
-      "Cheer for your college team at the annual inter-college basketball tournament. Come support your friends and enjoy an exciting day of sports.",
-  },
-];
+interface Event {
+  event_id: number;
+  title: string;
+  description: string | null;
+  event_date: string;
+  start_time: string;
+  end_time: string;
+  max_participants: number;
+  status: string;
+  organizer_name: string;
+  venue_name: string;
+  venue_location: string;
+  venue_capacity: number;
+}
+
+function getCategory(title: string) {
+  const value = title.toLowerCase();
+
+  if (value.includes("workshop")) return "Workshop";
+  if (value.includes("tech") || value.includes("development")) return "Technology";
+  if (value.includes("cultural")) return "Cultural";
+  if (value.includes("hackathon") || value.includes("competition")) return "Competition";
+
+  return "Campus Event";
+}
+
+function formatDate(date: string) {
+  return new Date(`${date.split("T")[0]}T00:00:00`).toLocaleDateString(
+    "en-IN",
+    {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }
+  );
+}
 
 export default function EventDetailsPage() {
   const params = useParams();
   const router = useRouter();
 
-  const event = events.find((item) => item.id === params.id);
+  const [event, setEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [registering, setRegistering] = useState(false);
+  const [registrationMessage, setRegistrationMessage] = useState("");
+  const [registrationError, setRegistrationError] = useState("");
 
-  if (!event) {
+  useEffect(() => {
+    async function fetchEvent() {
+      try {
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+
+        const response = await fetch(`${apiUrl}/events`);
+
+        if (!response.ok) {
+          throw new Error("Unable to retrieve event details.");
+        }
+
+        const data = await response.json();
+
+        if (!data.success || !Array.isArray(data.events)) {
+          throw new Error("Unexpected response from the server.");
+        }
+
+        const selectedEvent = data.events.find(
+          (item: Event) => item.event_id === Number(params.id)
+        );
+
+        if (!selectedEvent) {
+          setEvent(null);
+        } else {
+          setEvent(selectedEvent);
+        }
+      } catch (err) {
+        console.error("Event details error:", err);
+        setError(
+          err instanceof Error ? err.message : "Something went wrong."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchEvent();
+  }, [params.id]);
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
+        <p className="text-lg text-gray-600">Loading event details...</p>
+      </main>
+    );
+  }
+
+  if (error || !event) {
     return (
       <main className="min-h-screen bg-gray-50">
         <nav className="border-b bg-white px-6 py-5">
@@ -78,8 +114,10 @@ export default function EventDetailsPage() {
         <div className="flex min-h-[70vh] items-center justify-center">
           <div className="text-center">
             <h1 className="text-4xl font-bold text-gray-900">
-              Event Not Found
+              {error ? "Unable to Load Event" : "Event Not Found"}
             </h1>
+
+            {error && <p className="mt-3 text-gray-600">{error}</p>}
 
             <button
               onClick={() => router.push("/events")}
@@ -93,8 +131,7 @@ export default function EventDetailsPage() {
     );
   }
 
-  const registered = event.seats - event.available;
-  const percentage = (registered / event.seats) * 100;
+  const category = getCategory(event.title);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -153,13 +190,13 @@ export default function EventDetailsPage() {
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-12 text-white">
             <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-medium">
-              {event.category}
+              {category}
             </span>
 
             <h1 className="mt-6 text-4xl font-bold">{event.title}</h1>
 
             <p className="mt-4 text-lg text-blue-100">
-              Organized by {event.organizer}
+              Organized by {event.organizer_name}
             </p>
           </div>
 
@@ -173,17 +210,26 @@ export default function EventDetailsPage() {
               <div className="mt-7 space-y-6">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Date</p>
-                  <p className="mt-1 text-lg text-gray-900">{event.date}</p>
+                  <p className="mt-1 text-lg text-gray-900">
+                    {formatDate(event.event_date)}
+                  </p>
                 </div>
 
                 <div>
                   <p className="text-sm font-medium text-gray-500">Time</p>
-                  <p className="mt-1 text-lg text-gray-900">{event.time}</p>
+                  <p className="mt-1 text-lg text-gray-900">
+                    {event.start_time} – {event.end_time}
+                  </p>
                 </div>
 
                 <div>
                   <p className="text-sm font-medium text-gray-500">Venue</p>
-                  <p className="mt-1 text-lg text-gray-900">{event.venue}</p>
+                  <p className="mt-1 text-lg text-gray-900">
+                    {event.venue_name}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {event.venue_location}
+                  </p>
                 </div>
 
                 <div>
@@ -191,7 +237,7 @@ export default function EventDetailsPage() {
                     Organizer
                   </p>
                   <p className="mt-1 text-lg text-gray-900">
-                    {event.organizer}
+                    {event.organizer_name}
                   </p>
                 </div>
               </div>
@@ -205,34 +251,98 @@ export default function EventDetailsPage() {
 
               <div className="mt-7 space-y-4">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Total Seats</span>
-                  <span className="font-semibold">{event.seats}</span>
+                  <span className="text-gray-600">Maximum Participants</span>
+                  <span className="font-semibold">
+                    {event.max_participants}
+                  </span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Available Seats</span>
+                  <span className="text-gray-600">Venue Capacity</span>
+                  <span className="font-semibold">
+                    {event.venue_capacity}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Event Status</span>
                   <span className="font-semibold text-green-600">
-                    {event.available}
+                    {event.status}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-6 h-3 overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className="h-full rounded-full bg-blue-600"
-                  style={{ width: `${percentage}%` }}
-                />
+              <div className="mt-7 rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                Registration availability will be confirmed when you register.
               </div>
 
-              <p className="mt-2 text-sm text-gray-500">
-                {registered} students already registered
-              </p>
+              {registrationMessage && (
+                <p className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                  {registrationMessage}
+                </p>
+              )}
+
+              {registrationError && (
+                <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  {registrationError}
+                </p>
+              )}
 
               <button
-                onClick={() => router.push("/login")}
-                className="mt-7 w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
+                onClick={async () => {
+                  setRegistrationMessage("");
+                  setRegistrationError("");
+
+                  const token = sessionStorage.getItem("token");
+
+                  if (!token) {
+                    router.push("/login");
+                    return;
+                  }
+
+                  setRegistering(true);
+
+                  try {
+                    const apiUrl =
+                      process.env.NEXT_PUBLIC_API_URL ||
+                      "http://localhost:5001/api";
+
+                    const response = await fetch(`${apiUrl}/registrations`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        event_id: event.event_id,
+                      }),
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                      throw new Error(
+                        data.message || "Registration failed."
+                      );
+                    }
+
+                    setRegistrationMessage(
+                      "Registration successful! You are registered for this event."
+                    );
+                  } catch (err) {
+                    setRegistrationError(
+                      err instanceof Error
+                        ? err.message
+                        : "Unable to complete registration."
+                    );
+                  } finally {
+                    setRegistering(false);
+                  }
+                }}
+                disabled={registering || event.status === "Cancelled"}
+                className="mt-7 w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Register for Event
+                {registering ? "Registering..." : "Register for Event"}
               </button>
 
               <p className="mt-3 text-center text-sm text-gray-500">
@@ -248,7 +358,7 @@ export default function EventDetailsPage() {
             </h2>
 
             <p className="mt-4 max-w-3xl leading-7 text-gray-600">
-              {event.description}
+              {event.description || "No description available."}
             </p>
           </div>
         </div>

@@ -25,16 +25,23 @@ app.get("/api/health", (req, res) => {
 const eventRoutes = require("./routes/eventRoutes");
 app.use("/api/events", eventRoutes);
 
-const PORT = Number(process.env.PORT || 5001);
+// Venue routes
+const venueRoutes = require("./routes/venueRoutes");
+app.use("/api/venues", venueRoutes);
 
+// Registration routes
 const registrationRoutes = require("./routes/registrationRoutes");
 app.use("/api/registrations", registrationRoutes);
 
+// Feedback routes
 const feedbackRoutes = require("./routes/feedbackRoutes");
 app.use("/api/feedback", feedbackRoutes);
 
+// Authentication routes
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
+
+const PORT = Number(process.env.PORT || 5001);
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

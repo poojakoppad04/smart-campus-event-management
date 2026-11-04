@@ -63,12 +63,11 @@ router.post("/register", async (req, res) => {
   try {
     const normalizedEmail = email.trim().toLowerCase();
 
-    const [existingStudents] = await db.query(
-      "SELECT student_id FROM STUDENT WHERE email = ?",
-      [normalizedEmail]
-    );
+    const existingStudent = await db.student.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-    if (existingStudents.length > 0) {
+    if (existingStudent) {
       return res.status(409).json({
         success: false,
         message: "An account with this email already exists",
@@ -77,33 +76,30 @@ router.post("/register", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    const [result] = await db.query(
-      `INSERT INTO STUDENT
-       (name, email, phone, password, department, year_of_study)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        name.trim(),
-        normalizedEmail,
-        phone?.trim() || null,
-        hashedPassword,
+    const student = await db.student.create({
+      data: {
+        name: name.trim(),
+        email: normalizedEmail,
+        phone: phone?.trim() || null,
+        password: hashedPassword,
         department,
-        yearNumber,
-      ]
-    );
+        yearOfStudy: yearNumber,
+      },
+    });
 
     return res.status(201).json({
       success: true,
       message: "Student account created successfully",
       student: {
-        student_id: result.insertId,
-        name: name.trim(),
-        email: normalizedEmail,
-        department,
-        year_of_study: yearNumber,
+        student_id: student.studentId,
+        name: student.name,
+        email: student.email,
+        department: student.department,
+        year_of_study: student.yearOfStudy,
       },
     });
   } catch (error) {
-    if (error.code === "ER_DUP_ENTRY") {
+    if (error.code === "P2002") {
       return res.status(409).json({
         success: false,
         message: "An account with this email already exists",
@@ -118,6 +114,7 @@ router.post("/register", async (req, res) => {
     });
   }
 });
+
 // LOGIN
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -137,37 +134,21 @@ router.post("/login", async (req, res) => {
   try {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Look for a student account first.
-    const [students] = await db.query(
-      `SELECT student_id, name, email, password, department,
-              year_of_study
-       FROM STUDENT
-       WHERE email = ?`,
-      [normalizedEmail]
-    );
+    const student = await db.student.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-    let user;
-    let role;
+    let user = student;
+    let role = "student";
 
-    if (students.length > 0) {
-      user = students[0];
-      role = "student";
-    } else {
-      // If no student exists, look for an organizer account.
-      const [organizers] = await db.query(
-        `SELECT organizer_id, name, email, password, department
-         FROM ORGANIZER
-         WHERE email = ?`,
-        [normalizedEmail]
-      );
+    if (!user) {
+      user = await db.organizer.findUnique({
+        where: { email: normalizedEmail },
+      });
 
-      if (organizers.length > 0) {
-        user = organizers[0];
-        role = "organizer";
-      }
+      role = "organizer";
     }
 
-    // Use the same response for an unknown account and wrong password.
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -197,7 +178,7 @@ router.post("/login", async (req, res) => {
     }
 
     const userId =
-      role === "student" ? user.student_id : user.organizer_id;
+      role === "student" ? user.studentId : user.organizerId;
 
     const token = jwt.sign(
       {
@@ -229,4 +210,5 @@ router.post("/login", async (req, res) => {
     });
   }
 });
+
 module.exports = router;

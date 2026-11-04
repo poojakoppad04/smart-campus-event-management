@@ -12,15 +12,38 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: #ffffff;
+  color: #171717;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Consistent form field styling across the application */
+input,
+textarea,
+select {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+  caret-color: #000000;
+}
+
+/* Placeholder text */
+input::placeholder,
+textarea::placeholder {
+  color: #666666 !important;
+  opacity: 1;
+}
+
+/* Dropdown options */
+select option {
+  color: #000000;
+  background-color: #ffffff;
+}
+
+/* Keep disabled fields readable */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: #555555 !important;
+  background-color: #f3f4f6 !important;
 }

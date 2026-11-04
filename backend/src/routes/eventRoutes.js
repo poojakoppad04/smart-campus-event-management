@@ -7,37 +7,120 @@ const {
   authorizeRole,
 } = require("../middleware/authMiddleware");
 
+// GET events belonging to the logged-in organizer
+router.get(
+  "/mine",
+  authenticateToken,
+  authorizeRole("organizer"),
+  async (req, res) => {
+    try {
+      const events = await db.event.findMany({
+        where: {
+          organizerId: req.user.userId,
+        },
+        include: {
+          venue: {
+            select: {
+              venueName: true,
+              location: true,
+              capacity: true,
+            },
+          },
+          _count: {
+            select: {
+              registrations: {
+                where: {
+                  status: "Registered",
+                },
+              },
+            },
+          },
+        },
+        orderBy: [
+          { eventDate: "asc" },
+          { startTime: "asc" },
+        ],
+      });
+
+      const formattedEvents = events.map((event) => ({
+        event_id: event.eventId,
+        title: event.title,
+        description: event.description,
+        event_date: event.eventDate.toISOString().split("T")[0],
+        start_time: event.startTime.toISOString().split("T")[1].slice(0, 8),
+        end_time: event.endTime.toISOString().split("T")[1].slice(0, 8),
+        max_participants: event.maxParticipants,
+        registrations: event._count.registrations,
+        status: event.status,
+        venue_name: event.venue.venueName,
+        venue_location: event.venue.location,
+        venue_capacity: event.venue.capacity,
+      }));
+
+      return res.json({
+        success: true,
+        count: formattedEvents.length,
+        total_registrations: formattedEvents.reduce(
+          (total, event) => total + event.registrations,
+          0
+        ),
+        events: formattedEvents,
+      });
+    } catch (error) {
+      console.error("Error fetching organizer events:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve organizer events",
+      });
+    }
+  }
+);
+
 // GET all events - public access
 router.get("/", async (req, res) => {
   try {
-    const [events] = await db.query(`
-      SELECT
-        e.event_id,
-        e.title,
-        e.description,
-        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
-        e.start_time,
-        e.end_time,
-        e.max_participants,
-        e.status,
-        o.name AS organizer_name,
-        v.venue_name,
-        v.location AS venue_location,
-        v.capacity AS venue_capacity
-      FROM EVENT e
-      JOIN ORGANIZER o ON e.organizer_id = o.organizer_id
-      JOIN VENUE v ON e.venue_id = v.venue_id
-      ORDER BY e.event_date ASC, e.start_time ASC
-    `);
+    const events = await db.event.findMany({
+      include: {
+        organizer: {
+          select: { name: true },
+        },
+        venue: {
+          select: {
+            venueName: true,
+            location: true,
+            capacity: true,
+          },
+        },
+      },
+      orderBy: [
+        { eventDate: "asc" },
+        { startTime: "asc" },
+      ],
+    });
 
-    res.json({
+    const formattedEvents = events.map((event) => ({
+      event_id: event.eventId,
+      title: event.title,
+      description: event.description,
+      event_date: event.eventDate.toISOString().split("T")[0],
+      start_time: event.startTime.toISOString().split("T")[1].slice(0, 8),
+      end_time: event.endTime.toISOString().split("T")[1].slice(0, 8),
+      max_participants: event.maxParticipants,
+      status: event.status,
+      organizer_name: event.organizer.name,
+      venue_name: event.venue.venueName,
+      venue_location: event.venue.location,
+      venue_capacity: event.venue.capacity,
+    }));
+
+    return res.json({
       success: true,
-      count: events.length,
-      events,
+      count: formattedEvents.length,
+      events: formattedEvents,
     });
   } catch (error) {
-    console.error("Error fetching events:", error.message);
-    res.status(500).json({
+    console.error("Error fetching events:", error);
+    return res.status(500).json({
       success: false,
       message: "Failed to retrieve events",
     });
@@ -85,46 +168,42 @@ router.post(
     }
 
     try {
-      const [venues] = await db.query(
-        "SELECT venue_id, capacity FROM VENUE WHERE venue_id = ?",
-        [Number(venue_id)]
-      );
+      const venue = await db.venue.findUnique({
+        where: { venueId: Number(venue_id) },
+      });
 
-      if (venues.length === 0) {
+      if (!venue) {
         return res.status(404).json({
           success: false,
           message: "Venue not found",
         });
       }
 
-      if (Number(max_participants) > venues[0].capacity) {
+      if (Number(max_participants) > venue.capacity) {
         return res.status(400).json({
           success: false,
           message: "Maximum participants cannot exceed venue capacity",
         });
       }
 
-      const [result] = await db.query(
-        `INSERT INTO EVENT
-         (title, description, event_date, start_time, end_time,
-          organizer_id, venue_id, max_participants, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Upcoming')`,
-        [
-          title.trim(),
-          description || "",
-          event_date,
-          start_time,
-          end_time,
-          req.user.userId,
-          Number(venue_id),
-          Number(max_participants),
-        ]
-      );
+      const event = await db.event.create({
+        data: {
+          title: title.trim(),
+          description: description || "",
+          eventDate: new Date(`${event_date}T00:00:00.000Z`),
+          startTime: new Date(`1970-01-01T${start_time}Z`),
+          endTime: new Date(`1970-01-01T${end_time}Z`),
+          organizerId: req.user.userId,
+          venueId: Number(venue_id),
+          maxParticipants: Number(max_participants),
+          status: "Upcoming",
+        },
+      });
 
       return res.status(201).json({
         success: true,
         message: "Event created successfully",
-        event_id: result.insertId,
+        event_id: event.eventId,
       });
     } catch (error) {
       console.error("Event creation error:", error.message);

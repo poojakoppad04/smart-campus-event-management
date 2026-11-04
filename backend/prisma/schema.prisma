@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  studentId   Int       @id @default(autoincrement()) @map("student_id")
+  name        String    @db.VarChar(100)
+  email       String    @unique @db.VarChar(150)
+  password    String    @db.VarChar(255)
+  department  String?   @db.VarChar(100)
+  yearOfStudy Int?      @map("year_of_study")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  phone       String?   @db.VarChar(20)
+
+  registrations Registration[]
+  feedback      Feedback[]
+
+  @@map("STUDENT")
+}
+
+model Organizer {
+  organizerId Int       @id @default(autoincrement()) @map("organizer_id")
+  name        String    @db.VarChar(100)
+  email       String    @unique @db.VarChar(150)
+  password    String    @db.VarChar(255)
+  department  String?   @db.VarChar(100)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  events Event[]
+
+  @@map("ORGANIZER")
+}
+
+model Venue {
+  venueId            Int     @id @default(autoincrement()) @map("venue_id")
+  venueName          String  @unique @map("venue_name") @db.VarChar(150)
+  location           String  @db.VarChar(255)
+  capacity           Int
+  availabilityStatus String? @default("Available") @map("availability_status") @db.VarChar(20)
+
+  events Event[]
+
+  @@map("VENUE")
+}
+
+model Event {
+  eventId         Int       @id @default(autoincrement()) @map("event_id")
+  title           String    @db.VarChar(200)
+  description     String?   @db.Text
+  eventDate       DateTime  @map("event_date") @db.Date
+  startTime       DateTime  @map("start_time") @db.Time(0)
+  endTime         DateTime  @map("end_time") @db.Time(0)
+  organizerId     Int       @map("organizer_id")
+  venueId         Int       @map("venue_id")
+  maxParticipants Int       @map("max_participants")
+  status          String?   @default("Upcoming") @db.VarChar(20)
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  organizer     Organizer      @relation(fields: [organizerId], references: [organizerId], onDelete: Restrict)
+  venue         Venue          @relation(fields: [venueId], references: [venueId], onDelete: Restrict)
+  registrations Registration[]
+  feedback      Feedback[]
+
+  @@index([organizerId], map: "fk_event_organizer")
+  @@index([venueId], map: "fk_event_venue")
+  @@map("EVENT")
+}
+
+model Registration {
+  registrationId   Int       @id @default(autoincrement()) @map("registration_id")
+  studentId        Int       @map("student_id")
+  eventId          Int       @map("event_id")
+  registrationDate DateTime? @default(now()) @map("registration_date") @db.Timestamp(6)
+  status           String?   @default("Registered") @db.VarChar(20)
+
+  student Student @relation(fields: [studentId], references: [studentId], onDelete: Restrict)
+  event   Event   @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+
+  @@unique([studentId, eventId], map: "uq_student_event")
+  @@index([eventId], map: "fk_registration_event")
+  @@map("REGISTRATION")
+}
+
+model Feedback {
+  feedbackId   Int       @id @default(autoincrement()) @map("feedback_id")
+  studentId    Int       @map("student_id")
+  eventId      Int       @map("event_id")
+  rating       Int
+  comments     String?   @db.Text
+  feedbackDate DateTime? @default(now()) @map("feedback_date") @db.Timestamp(6)
+
+  student Student @relation(fields: [studentId], references: [studentId], onDelete: Restrict)
+  event   Event   @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+
+  @@unique([studentId, eventId], map: "uq_student_event_feedback")
+  @@index([eventId], map: "fk_feedback_event")
+  @@map("FEEDBACK")
+}

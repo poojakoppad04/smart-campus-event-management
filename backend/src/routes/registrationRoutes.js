@@ -7,134 +7,253 @@ const {
   authorizeRole,
 } = require("../middleware/authMiddleware");
 
-// GET all registrations
-router.get("/", authenticateToken, authorizeRole("organizer"), async (req, res) => {
-  try {
-    const [registrations] = await db.query(`
-      SELECT
-        r.registration_id,
-        r.student_id,
-        s.name AS student_name,
-        r.event_id,
-        e.title AS event_title,
-        r.registration_date,
-        r.status
-      FROM REGISTRATION r
-      JOIN STUDENT s ON r.student_id = s.student_id
-      JOIN EVENT e ON r.event_id = e.event_id
-      ORDER BY r.registration_date DESC
-    `);
+// GET registrations belonging to the logged-in student
+router.get(
+  "/my",
+  authenticateToken,
+  authorizeRole("student"),
+  async (req, res) => {
+    try {
+      const registrations = await db.registration.findMany({
+        where: {
+          studentId: req.user.userId,
+        },
+        include: {
+          event: {
+            select: {
+              title: true,
+              eventDate: true,
+              startTime: true,
+              endTime: true,
+              status: true,
+              venue: {
+                select: {
+                  venueName: true,
+                  location: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          registrationDate: "desc",
+        },
+      });
 
-    res.json({
-      success: true,
-      count: registrations.length,
-      registrations,
-    });
-  } catch (error) {
-    console.error("Error fetching registrations:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve registrations",
-    });
+      const formattedRegistrations = registrations.map((r) => ({
+        registration_id: r.registrationId,
+        event_id: r.eventId,
+        event_title: r.event.title,
+        event_date: r.event.eventDate,
+        start_time: r.event.startTime,
+        end_time: r.event.endTime,
+        venue_name: r.event.venue.venueName,
+        venue_location: r.event.venue.location,
+        event_status: r.event.status,
+        registration_date: r.registrationDate,
+        registration_status: r.status,
+      }));
+
+      return res.json({
+        success: true,
+        count: formattedRegistrations.length,
+        registrations: formattedRegistrations,
+      });
+    } catch (error) {
+      console.error("Error fetching student registrations:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve your registrations",
+      });
+    }
   }
-});
+);
+
+// GET registrations belonging to the logged-in organizer
+router.get(
+  "/",
+  authenticateToken,
+  authorizeRole("organizer"),
+  async (req, res) => {
+    try {
+      const eventId = req.query.eventId
+        ? Number(req.query.eventId)
+        : null;
+
+      if (
+        eventId !== null &&
+        (!Number.isInteger(eventId) || eventId <= 0)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid eventId is required",
+        });
+      }
+
+      const registrations = await db.registration.findMany({
+        where: {
+          ...(eventId !== null ? { eventId } : {}),
+          event: {
+            organizerId: req.user.userId,
+          },
+        },
+        include: {
+          student: {
+            select: {
+              name: true,
+              email: true,
+              department: true,
+              yearOfStudy: true,
+            },
+          },
+          event: {
+            select: {
+              title: true,
+            },
+          },
+        },
+        orderBy: {
+          registrationDate: "desc",
+        },
+      });
+
+      const formattedRegistrations = registrations.map((r) => ({
+        registration_id: r.registrationId,
+        student_id: r.studentId,
+        student_name: r.student.name,
+        student_email: r.student.email,
+        department: r.student.department,
+        year_of_study: r.student.yearOfStudy,
+        event_id: r.eventId,
+        event_title: r.event.title,
+        registration_date: r.registrationDate,
+        status: r.status,
+      }));
+
+      return res.json({
+        success: true,
+        count: formattedRegistrations.length,
+        registrations: formattedRegistrations,
+      });
+    } catch (error) {
+      console.error("Error fetching registrations:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve registrations",
+      });
+    }
+  }
+);
 
 // POST a new registration - students only
-router.post("/", authenticateToken, authorizeRole("student"), async (req, res) => {
-  const event_id = Number(req.body.event_id);
-  const student_id = req.user.userId;
+router.post(
+  "/",
+  authenticateToken,
+  authorizeRole("student"),
+  async (req, res) => {
+    const eventId = Number(req.body.event_id);
+    const studentId = req.user.userId;
 
-  if (!Number.isInteger(event_id) || event_id <= 0) {
-    return res.status(400).json({
-      success: false,
-      message: "A valid event_id is required",
-    });
-  }
-
-  let connection;
-
-  try {
-    connection = await db.getConnection();
-    await connection.beginTransaction();
-
-    const [events] = await connection.query(
-      `SELECT event_id, max_participants, status
-       FROM EVENT
-       WHERE event_id = ?
-       FOR UPDATE`,
-      [event_id]
-    );
-
-    if (events.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({
+    if (!Number.isInteger(eventId) || eventId <= 0) {
+      return res.status(400).json({
         success: false,
-        message: "Event not found",
+        message: "A valid event_id is required",
       });
     }
 
-    if (events[0].status === "Cancelled") {
-      await connection.rollback();
-      return res.status(409).json({
-        success: false,
-        message: "This event has been cancelled",
-      });
-    }
+    try {
+      const result = await db.$transaction(
+        async (tx) => {
+          // Lock the event row to prevent overbooking.
+          await tx.$queryRaw`
+            SELECT event_id
+            FROM "EVENT"
+            WHERE event_id = ${eventId}
+            FOR UPDATE
+          `;
 
-    const [counts] = await connection.query(
-      `SELECT COUNT(*) AS total
-       FROM REGISTRATION
-       WHERE event_id = ? AND status = 'Registered'`,
-      [event_id]
-    );
+          const event = await tx.event.findUnique({
+            where: { eventId },
+          });
 
-    if (counts[0].total >= events[0].max_participants) {
-      await connection.rollback();
-      return res.status(409).json({
-        success: false,
-        message: "Sorry, this event is full",
-      });
-    }
+          if (!event) {
+            return { error: "NOT_FOUND" };
+          }
 
-    const [result] = await connection.query(
-      `INSERT INTO REGISTRATION (student_id, event_id)
-       VALUES (?, ?)`,
-      [student_id, event_id]
-    );
+          if (event.status === "Cancelled") {
+            return { error: "CANCELLED" };
+          }
 
-    await connection.commit();
+          const currentCount = await tx.registration.count({
+            where: {
+              eventId,
+              status: "Registered",
+            },
+          });
 
-    return res.status(201).json({
-      success: true,
-      message: "Registration successful",
-      registration_id: result.insertId,
-    });
-  } catch (error) {
-    if (connection) {
-      try {
-        await connection.rollback();
-      } catch (rollbackError) {
-        console.error("Rollback failed:", rollbackError.message);
+          if (currentCount >= event.maxParticipants) {
+            return { error: "FULL" };
+          }
+
+          const registration = await tx.registration.create({
+            data: {
+              studentId,
+              eventId,
+              status: "Registered",
+            },
+          });
+
+          return {
+            registrationId: registration.registrationId,
+          };
+        },
+        {
+          maxWait: 10000,
+          timeout: 30000,
+        }
+      );
+
+      if (result.error === "NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          message: "Event not found",
+        });
       }
-    }
 
-    if (error.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({
+      if (result.error === "CANCELLED") {
+        return res.status(409).json({
+          success: false,
+          message: "This event has been cancelled",
+        });
+      }
+
+      if (result.error === "FULL") {
+        return res.status(409).json({
+          success: false,
+          message: "Sorry, this event is full",
+        });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: "Registration successful",
+        registration_id: result.registrationId,
+      });
+    } catch (error) {
+      if (error.code === "P2002") {
+        return res.status(409).json({
+          success: false,
+          message: "You are already registered for this event",
+        });
+      }
+
+      console.error("Registration error:", error);
+      return res.status(500).json({
         success: false,
-        message: "You are already registered for this event",
+        message: "Registration failed due to a server error",
       });
     }
-
-    console.error("Registration error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Registration failed due to a server error",
-    });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
   }
-});
+);
 
 module.exports = router;
