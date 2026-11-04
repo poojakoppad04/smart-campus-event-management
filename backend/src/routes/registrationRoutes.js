@@ -1,6 +1,7 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const logActivity = require("../utils/activityLogger");
 
 const {
   authenticateToken,
@@ -15,6 +16,9 @@ router.get("/", authenticateToken, authorizeRole("organizer"), async (req, res) 
         r.registration_id,
         r.student_id,
         s.name AS student_name,
+        s.email AS student_email,
+        s.department,
+        s.year_of_study,
         r.event_id,
         e.title AS event_title,
         r.registration_date,
@@ -104,6 +108,16 @@ router.post("/", authenticateToken, authorizeRole("student"), async (req, res) =
 
     await connection.commit();
 
+    await logActivity({
+      userId: student_id,
+      userRole: req.user.role,
+      action: "registration_created",
+      details: {
+        registration_id: result.insertId,
+        event_id,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Registration successful",
@@ -138,3 +152,6 @@ router.post("/", authenticateToken, authorizeRole("student"), async (req, res) =
 });
 
 module.exports = router;
+
+
+

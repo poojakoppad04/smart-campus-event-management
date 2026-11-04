@@ -1,21 +1,58 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError("");
+    setLoading(true);
 
-    // Backend registration will be connected later.
-    alert("Registration will be connected to the backend soon!");
+    const form = new FormData(event.currentTarget);
+
+    const studentData = {
+      name: String(form.get("name") || "").trim(),
+      email: String(form.get("email") || "").trim(),
+      phone: String(form.get("phone") || "").trim(),
+      department: String(form.get("department") || ""),
+      year: String(form.get("year") || ""),
+      password: String(form.get("password") || ""),
+      confirmPassword: String(form.get("confirmPassword") || ""),
+    };
+
+    try {
+      const response = await fetch("http://127.0.0.1:5001/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(studentData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setError(result.message || "Registration failed. Please try again.");
+        return;
+      }
+
+      alert("Account created successfully! Please log in.");
+      router.push("/login");
+    } catch (err) {
+      console.error("Registration error:", err);
+      setError("Unable to connect to the server. Please check that the backend is running.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <main className="min-h-screen bg-gray-50">
-      {/* Navbar */}
       <nav className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <button
@@ -34,7 +71,6 @@ export default function RegisterPage() {
         </div>
       </nav>
 
-      {/* Registration */}
       <section className="px-6 py-12">
         <div className="mx-auto w-full max-w-lg">
           <div className="rounded-2xl bg-white p-8 shadow-sm">
@@ -49,15 +85,10 @@ export default function RegisterPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Name */}
               <div>
-                <label
-                  htmlFor="name"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
+                <label htmlFor="name" className="mb-2 block text-sm font-medium text-gray-700">
                   Full Name
                 </label>
-
                 <input
                   id="name"
                   name="name"
@@ -68,15 +99,10 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {/* Email */}
               <div>
-                <label
-                  htmlFor="email"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
+                <label htmlFor="email" className="mb-2 block text-sm font-medium text-gray-700">
                   Student Email
                 </label>
-
                 <input
                   id="email"
                   name="email"
@@ -87,15 +113,10 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {/* Phone */}
               <div>
-                <label
-                  htmlFor="phone"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
+                <label htmlFor="phone" className="mb-2 block text-sm font-medium text-gray-700">
                   Phone Number
                 </label>
-
                 <input
                   id="phone"
                   name="phone"
@@ -105,16 +126,11 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {/* Department and Year */}
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label
-                    htmlFor="department"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
+                  <label htmlFor="department" className="mb-2 block text-sm font-medium text-gray-700">
                     Department
                   </label>
-
                   <select
                     id="department"
                     name="department"
@@ -132,13 +148,9 @@ export default function RegisterPage() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="year"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
+                  <label htmlFor="year" className="mb-2 block text-sm font-medium text-gray-700">
                     Year
                   </label>
-
                   <select
                     id="year"
                     name="year"
@@ -154,54 +166,51 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Password */}
               <div>
-                <label
-                  htmlFor="password"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
+                <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-700">
                   Password
                 </label>
-
                 <input
                   id="password"
                   name="password"
                   type="password"
                   placeholder="Create a password"
+                  minLength={8}
                   required
                   className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
-              {/* Confirm Password */}
               <div>
-                <label
-                  htmlFor="confirmPassword"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
+                <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-gray-700">
                   Confirm Password
                 </label>
-
                 <input
                   id="confirmPassword"
                   name="confirmPassword"
                   type="password"
                   placeholder="Confirm your password"
+                  minLength={8}
                   required
                   className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
-              {/* Submit */}
+              {error && (
+                <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {error}
+                </p>
+              )}
+
               <button
                 type="submit"
-                className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
+                disabled={loading}
+                className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Create Account
+                {loading ? "Creating Account..." : "Create Account"}
               </button>
             </form>
 
-            {/* Login */}
             <div className="mt-7 text-center">
               <p className="text-sm text-gray-600">
                 Already have an account?{" "}

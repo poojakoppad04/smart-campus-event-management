@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const logActivity = require("../utils/activityLogger");
 
 const {
   authenticateToken,
@@ -86,6 +87,17 @@ router.post("/", authenticateToken, authorizeRole("student"), async (req, res) =
       [student_id, event_id, rating, comments ?? null]
     );
 
+    await logActivity({
+      userId: student_id,
+      userRole: req.user.role,
+      action: "feedback_submitted",
+      details: {
+        feedback_id: result.insertId,
+        event_id,
+        rating,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Feedback submitted successfully",
@@ -108,3 +120,5 @@ router.post("/", authenticateToken, authorizeRole("student"), async (req, res) =
 });
 
 module.exports = router;
+
+
