@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const logActivity = require("../utils/activityLogger");
 
 const {
   authenticateToken,
@@ -121,6 +122,16 @@ router.post(
         ]
       );
 
+      await logActivity({
+        userId: req.user.userId,
+        userRole: req.user.role,
+        action: "event_created",
+        details: {
+          event_id: result.insertId,
+          title: title.trim(),
+          venue_id: Number(venue_id),
+        },
+      });
       return res.status(201).json({
         success: true,
         message: "Event created successfully",
@@ -137,3 +148,5 @@ router.post(
 );
 
 module.exports = router;
+
+
