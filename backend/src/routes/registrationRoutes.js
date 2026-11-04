@@ -1,24 +1,31 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const logActivity = require("../utils/activityLogger");
+
+const {
+  authenticateToken,
+  authorizeRole,
+} = require("../middleware/authMiddleware");
 
 // GET all registrations
-router.get("/", async (req, res) => {
+router.get("/", authenticateToken, authorizeRole("organizer"), async (req, res) => {
   try {
     const [registrations] = await db.query(`
       SELECT
         r.registration_id,
         r.student_id,
         s.name AS student_name,
+        s.email AS student_email,
+        s.department,
+        s.year_of_study,
         r.event_id,
         e.title AS event_title,
         r.registration_date,
         r.status
       FROM REGISTRATION r
-      JOIN STUDENT s
-        ON r.student_id = s.student_id
-      JOIN EVENT e
-        ON r.event_id = e.event_id
+      JOIN STUDENT s ON r.student_id = s.student_id
+      JOIN EVENT e ON r.event_id = e.event_id
       ORDER BY r.registration_date DESC
     `);
 
@@ -29,7 +36,6 @@ router.get("/", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching registrations:", error.message);
-
     res.status(500).json({
       success: false,
       message: "Failed to retrieve registrations",
@@ -37,19 +43,15 @@ router.get("/", async (req, res) => {
   }
 });
 
-// POST a new registration
-router.post("/", async (req, res) => {
-  const { student_id, event_id } = req.body;
+// POST a new registration - students only
+router.post("/", authenticateToken, authorizeRole("student"), async (req, res) => {
+  const event_id = Number(req.body.event_id);
+  const student_id = req.user.userId;
 
-  if (
-    !Number.isInteger(student_id) ||
-    !Number.isInteger(event_id) ||
-    student_id <= 0 ||
-    event_id <= 0
-  ) {
+  if (!Number.isInteger(event_id) || event_id <= 0) {
     return res.status(400).json({
       success: false,
-      message: "Valid student_id and event_id are required",
+      message: "A valid event_id is required",
     });
   }
 
@@ -59,7 +61,6 @@ router.post("/", async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // Lock the event row so simultaneous requests cannot overbook it.
     const [events] = await connection.query(
       `SELECT event_id, max_participants, status
        FROM EVENT
@@ -70,7 +71,6 @@ router.post("/", async (req, res) => {
 
     if (events.length === 0) {
       await connection.rollback();
-
       return res.status(404).json({
         success: false,
         message: "Event not found",
@@ -79,49 +79,27 @@ router.post("/", async (req, res) => {
 
     if (events[0].status === "Cancelled") {
       await connection.rollback();
-
       return res.status(409).json({
         success: false,
         message: "This event has been cancelled",
       });
     }
 
-    // Confirm the student exists.
-    const [students] = await connection.query(
-      `SELECT student_id
-       FROM STUDENT
-       WHERE student_id = ?`,
-      [student_id]
-    );
-
-    if (students.length === 0) {
-      await connection.rollback();
-
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-      });
-    }
-
-    // Count active registrations while the event row is locked.
     const [counts] = await connection.query(
       `SELECT COUNT(*) AS total
        FROM REGISTRATION
-       WHERE event_id = ?
-         AND status = 'Registered'`,
+       WHERE event_id = ? AND status = 'Registered'`,
       [event_id]
     );
 
     if (counts[0].total >= events[0].max_participants) {
       await connection.rollback();
-
       return res.status(409).json({
         success: false,
         message: "Sorry, this event is full",
       });
     }
 
-    // The UNIQUE constraint also prevents duplicate registrations.
     const [result] = await connection.query(
       `INSERT INTO REGISTRATION (student_id, event_id)
        VALUES (?, ?)`,
@@ -129,6 +107,16 @@ router.post("/", async (req, res) => {
     );
 
     await connection.commit();
+
+    await logActivity({
+      userId: student_id,
+      userRole: req.user.role,
+      action: "registration_created",
+      details: {
+        registration_id: result.insertId,
+        event_id,
+      },
+    });
 
     return res.status(201).json({
       success: true,
@@ -152,7 +140,6 @@ router.post("/", async (req, res) => {
     }
 
     console.error("Registration error:", error.message);
-
     return res.status(500).json({
       success: false,
       message: "Registration failed due to a server error",
@@ -165,3 +152,6 @@ router.post("/", async (req, res) => {
 });
 
 module.exports = router;
+
+
+

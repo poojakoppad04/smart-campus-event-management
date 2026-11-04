@@ -1,44 +1,109 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
-const organizerEvents = [
-  {
-    id: 1,
-    title: "Campus Hackathon 2026",
-    date: "October 18, 2026",
-    time: "10:00 AM",
-    venue: "Innovation Lab",
-    registrations: 82,
-    capacity: 100,
-    status: "Upcoming",
-  },
-  {
-    id: 2,
-    title: "Photography Workshop",
-    date: "October 22, 2026",
-    time: "2:00 PM",
-    venue: "Media Room",
-    registrations: 34,
-    capacity: 50,
-    status: "Upcoming",
-  },
-  {
-    id: 3,
-    title: "Web Development Bootcamp",
-    date: "September 15, 2026",
-    time: "11:00 AM",
-    venue: "Computer Lab 2",
-    registrations: 60,
-    capacity: 60,
-    status: "Completed",
-  },
-];
+interface OrganizerEvent {
+  event_id: number;
+  title: string;
+  event_date: string;
+  start_time: string;
+  max_participants: number;
+  status: string;
+  venue_name: string;
+  registrations: number;
+}
+
+interface DashboardStats {
+  totalEvents: number;
+  upcomingEvents: number;
+  totalRegistrations: number;
+  totalFeedback: number;
+}
 
 export default function OrganizerDashboardPage() {
+  const [events, setEvents] = useState<OrganizerEvent[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalEvents: 0,
+    upcomingEvents: 0,
+    totalRegistrations: 0,
+    totalFeedback: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        setError("Please log in as an organizer to view your dashboard.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:5001/api/events/organizer/my-events",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Failed to load dashboard.");
+        }
+
+        setEvents(result.events || []);
+        setStats(result.stats);
+      } catch (err) {
+        console.error("Dashboard loading error:", err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load organizer dashboard."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  const statCards = [
+    {
+      label: "Total Events",
+      value: stats.totalEvents,
+      description: "Events created",
+      color: "text-gray-900",
+    },
+    {
+      label: "Upcoming Events",
+      value: stats.upcomingEvents,
+      description: "Currently scheduled",
+      color: "text-blue-600",
+    },
+    {
+      label: "Total Registrations",
+      value: stats.totalRegistrations,
+      description: "Across all your events",
+      color: "text-green-600",
+    },
+    {
+      label: "Feedback",
+      value: stats.totalFeedback,
+      description: "Responses received",
+      color: "text-purple-600",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-gray-50">
-      {/* Navbar */}
       <nav className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <Link href="/" className="text-2xl font-bold text-blue-600">
@@ -61,9 +126,7 @@ export default function OrganizerDashboardPage() {
             </Link>
 
             <button
-              onClick={() =>
-                alert("Logout will be connected to the backend soon!")
-              }
+              onClick={() => { localStorage.removeItem("token"); localStorage.removeItem("user"); window.location.href = "/login"; }}
               className="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 transition hover:bg-gray-200"
             >
               Logout
@@ -72,13 +135,12 @@ export default function OrganizerDashboardPage() {
         </div>
       </nav>
 
-      {/* Header */}
       <section className="bg-gradient-to-r from-indigo-600 to-blue-600">
         <div className="mx-auto max-w-7xl px-6 py-12">
           <p className="mb-2 text-blue-100">Organizer Dashboard</p>
 
           <h1 className="text-4xl font-bold text-white">
-            Welcome back, Organizer! 👋
+            Welcome back, Organizer!
           </h1>
 
           <p className="mt-3 text-blue-100">
@@ -88,52 +150,27 @@ export default function OrganizerDashboardPage() {
         </div>
       </section>
 
-      {/* Statistics */}
       <section className="mx-auto max-w-7xl px-6 py-8">
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">
-              Total Events
-            </p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">3</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Events created
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">
-              Upcoming Events
-            </p>
-            <p className="mt-2 text-3xl font-bold text-blue-600">2</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Currently scheduled
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">
-              Total Registrations
-            </p>
-            <p className="mt-2 text-3xl font-bold text-green-600">176</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Across all events
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">
-              Feedback
-            </p>
-            <p className="mt-2 text-3xl font-bold text-purple-600">42</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Responses received
-            </p>
-          </div>
+          {statCards.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-2xl bg-white p-6 shadow-sm"
+            >
+              <p className="text-sm font-medium text-gray-500">
+                {stat.label}
+              </p>
+              <p className={`mt-2 text-3xl font-bold ${stat.color}`}>
+                {loading ? "..." : stat.value}
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                {stat.description}
+              </p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* Actions */}
       <section className="mx-auto max-w-7xl px-6 pb-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -147,9 +184,9 @@ export default function OrganizerDashboardPage() {
           </div>
 
           <button
-            onClick={() =>
-              alert("Create Event form will be connected soon!")
-            }
+            onClick={() => {
+              window.location.href = "/create-event";
+            }}
             className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
           >
             + Create New Event
@@ -157,108 +194,178 @@ export default function OrganizerDashboardPage() {
         </div>
       </section>
 
-      {/* Event List */}
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="space-y-5">
-          {organizerEvents.map((event) => {
-            const percentage = Math.round(
-              (event.registrations / event.capacity) * 100
-            );
+        {loading && (
+          <p className="rounded-xl bg-white p-6 text-gray-600 shadow-sm">
+            Loading your events...
+          </p>
+        )}
 
-            return (
-              <div
-                key={event.id}
-                className="rounded-2xl bg-white p-6 shadow-sm"
-              >
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                  {/* Event Info */}
-                  <div className="flex-1">
-                    <div className="mb-3 flex flex-wrap items-center gap-3">
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          event.status === "Upcoming"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-gray-100 text-gray-600"
-                        }`}
+        {!loading && error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && events.length === 0 && (
+          <div className="rounded-2xl bg-white p-10 text-center shadow-sm">
+            <h3 className="text-xl font-bold text-gray-900">
+              No events created yet
+            </h3>
+            <p className="mt-2 text-gray-500">
+              Create your first campus event to see it here.
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <div className="space-y-5">
+            {events.map((event) => {
+              const registrations = Number(event.registrations) || 0;
+              const capacity = Number(event.max_participants) || 0;
+              const percentage =
+                capacity > 0
+                  ? Math.min(
+                      100,
+                      Math.round((registrations / capacity) * 100)
+                    )
+                  : 0;
+
+              const formattedDate = new Date(
+                `${event.event_date}T00:00:00`
+              ).toLocaleDateString("en-IN", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              });
+
+              return (
+                <div
+                  key={event.event_id}
+                  className="rounded-2xl bg-white p-6 shadow-sm"
+                >
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex-1">
+                      <div className="mb-3 flex flex-wrap items-center gap-3">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            event.status === "Upcoming"
+                              ? "bg-blue-100 text-blue-700"
+                              : event.status === "Completed"
+                              ? "bg-gray-100 text-gray-600"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {event.status}
+                        </span>
+
+                        <span className="text-sm text-gray-500">
+                          {registrations}/{capacity} seats
+                        </span>
+                      </div>
+
+                      <h3 className="text-xl font-bold text-gray-900">
+                        {event.title}
+                      </h3>
+
+                      <div className="mt-3 space-y-1 text-sm text-gray-600">
+                        <p>Date: {formattedDate}</p>
+                        <p>Time: {event.start_time}</p>
+                        <p>Venue: {event.venue_name}</p>
+                      </div>
+
+                      <div className="mt-5 max-w-xl">
+                        <div className="mb-2 flex justify-between text-xs">
+                          <span className="text-gray-500">
+                            Registration progress
+                          </span>
+
+                          <span className="font-semibold text-gray-700">
+                            {percentage}%
+                          </span>
+                        </div>
+
+                        <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-full rounded-full bg-blue-600"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <Link
+                        href={`/registrations?eventId=${event.event_id}`}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
                       >
-                        {event.status}
-                      </span>
+                        View Registrations
+                      </Link>
 
-                      <span className="text-sm text-gray-500">
-                        {event.registrations}/{event.capacity} seats
-                      </span>
+                      <button
+                        onClick={async () => {
+                          const newTitle = window.prompt("Enter the updated event title:", event.title);
+                          if (newTitle === null || !newTitle.trim()) return;
+
+                          const newDate = window.prompt("Enter the updated event date (YYYY-MM-DD):", String(event.event_date).slice(0, 10));
+                          if (!newDate) return;
+
+                          try {
+                            const token = localStorage.getItem("token");
+                            const response = await fetch("http://127.0.0.1:5001/api/events/" + event.event_id, {
+                              method: "PUT",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: "Bearer " + token,
+                              },
+                              body: JSON.stringify({ title: newTitle.trim(), event_date: newDate }),
+                            });
+                            const result = await response.json();
+                            if (!response.ok) throw new Error(result.message || "Update failed");
+                            alert("Event updated successfully!");
+                            window.location.reload();
+                          } catch (error) {
+                            alert(error instanceof Error ? error.message : "Could not update event");
+                          }
+                        }}
+                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("Are you sure you want to delete this event?")) return;
+
+                          try {
+                            const token = localStorage.getItem("token");
+                            const response = await fetch("http://127.0.0.1:5001/api/events/" + event.event_id, {
+                              method: "DELETE",
+                              headers: {
+                                Authorization: "Bearer " + token,
+                              },
+                            });
+                            const result = await response.json();
+                            if (!response.ok) throw new Error(result.message || "Delete failed");
+                            alert("Event deleted successfully!");
+                            window.location.reload();
+                          } catch (error) {
+                            alert(error instanceof Error ? error.message : "Could not delete event");
+                          }
+                        }}
+                        className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
                     </div>
-
-                    <h3 className="text-xl font-bold text-gray-900">
-                      {event.title}
-                    </h3>
-
-                    <div className="mt-3 space-y-1 text-sm text-gray-600">
-                      <p>📅 {event.date}</p>
-                      <p>⏰ {event.time}</p>
-                      <p>📍 {event.venue}</p>
-                    </div>
-
-                    {/* Registration Progress */}
-                    <div className="mt-5 max-w-xl">
-                      <div className="mb-2 flex justify-between text-xs">
-                        <span className="text-gray-500">
-                          Registration progress
-                        </span>
-
-                        <span className="font-semibold text-gray-700">
-                          {percentage}%
-                        </span>
-                      </div>
-
-                      <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                        <div
-                          className="h-full rounded-full bg-blue-600"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      onClick={() =>
-                        alert(
-                          "Registration management will be connected to the backend soon!"
-                        )
-                      }
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                    >
-                      View Registrations
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        alert("Edit Event will be connected soon!")
-                      }
-                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                    >
-                      Edit
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        alert("Delete Event will be connected soon!")
-                      }
-                      className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
-      {/* Footer */}
       <footer className="border-t bg-white">
         <div className="mx-auto max-w-7xl px-6 py-6 text-center text-sm text-gray-500">
           © 2026 SmartCampus. Smart Campus Event Management System.
@@ -267,3 +374,8 @@ export default function OrganizerDashboardPage() {
     </main>
   );
 }
+
+
+
+
+

@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const db = require("../config/db");
@@ -120,7 +120,7 @@ router.post("/register", async (req, res) => {
 });
 // LOGIN
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
 
   if (
     typeof email !== "string" ||
@@ -137,36 +137,26 @@ router.post("/login", async (req, res) => {
   try {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Look for a student account first.
-    const [students] = await db.query(
-      `SELECT student_id, name, email, password, department,
-              year_of_study
-       FROM STUDENT
-       WHERE email = ?`,
-      [normalizedEmail]
-    );
-
     let user;
-    let role;
 
-    if (students.length > 0) {
+    if (role === "student") {
+      const [students] = await db.query(
+        `SELECT student_id, name, email, password, department,
+                year_of_study
+         FROM STUDENT
+         WHERE email = ?`,
+        [normalizedEmail]
+      );
       user = students[0];
-      role = "student";
-    } else {
-      // If no student exists, look for an organizer account.
+    } else if (role === "organizer") {
       const [organizers] = await db.query(
         `SELECT organizer_id, name, email, password, department
          FROM ORGANIZER
          WHERE email = ?`,
         [normalizedEmail]
       );
-
-      if (organizers.length > 0) {
-        user = organizers[0];
-        role = "organizer";
-      }
+      user = organizers[0];
     }
-
     // Use the same response for an unknown account and wrong password.
     if (!user) {
       return res.status(401).json({
